@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
         test_df.show()
 
-        # this is just some random test text!!! BY JAMES
-        test_df.withColumn("vin", explode("vin")).show()
+        # this is just some random test text!!! BY JAMES - MORE TEXT
+        ### test_df.withColumn("vin", explode("vin")).show()
 
         spark.stop()
