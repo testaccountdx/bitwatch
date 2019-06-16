@@ -32,11 +32,13 @@ if __name__ == "__main__":
     with open(path) as json_file:
         data = json.load(json_file)
 
-        # create RDD and DataFrame
+        # create RDD
         rdd = sc.parallelize(data['tx'])
+
+        # convert RDD to DataFrame
         test_df = spark.read.json(rdd)
 
-        # print schema
+        # print DataFrame schema
         test_df.printSchema()
 
         test_df.show()

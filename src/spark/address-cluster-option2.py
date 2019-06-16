@@ -5,14 +5,11 @@
 
 from __future__ import print_function
 import sys
-from random import random
-from operator import add
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
 from pyspark.sql import SQLContext
 
-from pyspark.sql.functions import explode, from_json
-from pyspark.sql.types import *
+from pyspark.sql.functions import explode
 
 if __name__ == "__main__":
     """
@@ -29,29 +26,39 @@ if __name__ == "__main__":
     path = "block150000.json"
 
     # create DataFrame
-    df = spark.read.json(path, multiLine=True).select("tx")
+    df = spark.read.json(path, multiLine=True)
+    df.show()
 
     # print schema
     df.printSchema()
 
-    df.withColumn("txid", df.tx.txid)\
-        .withColumn("vout_address", explode(df.tx.vout.scriptPubKey.address))\
-        .show(50)
+    # test explode function at tx level
+    df_test1 = df.withColumn("tx", explode(df.tx))
+    df_test1.show()
 
-    # below code works!
-    # use explode function to deconstruct transactions into rows
-    ###df.withColumn("vout", explode(df.tx.vout))\
-    ###    .show()
+    # print schema
+    df_test1.printSchema()
 
-    ##df.createOrReplaceTempView("block")
+    # test adding new column at the tx level
+    df_test2 = df_test1.withColumn("txid", df_test1.tx.txid)\
+        .withColumn("vin_coinbase", df_test1.tx.vin.coinbase)\
+        .withColumn("vin_txid", df_test1.tx.vin.txid)\
+        .withColumn("vin_vout", df_test1.tx.vin.vout)\
+        .withColumn("vout_value", df_test1.tx.vout.value)\
+        .withColumn("vout_n", df_test1.tx.vout.n)\
+        .withColumn("vout_addresses", df_test1.tx.vout.scriptPubKey.addresses)
 
-    ##addressDF = spark.sql("SELECT tx.txid, tx.hash, tx.version FROM block")
-    ##addressDF.show()
+    # show DataFrame
+    df_test2.show()
 
-    ## read in JSON file and select target field(s)
-    #df = sqlc.read.json("block0.json", multiLine=True).select("hash")
+    # print schema
+    df_test2.printSchema()
 
-    ## show first element
-    #df.show(1, False)
+    # drop unnecessary columns
+    drop_cols = ["", "", "", "", ""]
+    df_test2 = df_test2.drop()
+
+    # show specific column (JUST FOR TESTING)
+    ###df_test2.select("vout_addresses").show(truncate=False)
 
     spark.stop()
