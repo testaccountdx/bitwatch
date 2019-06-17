@@ -18,8 +18,8 @@ if __name__ == "__main__":
     sqlContext = SQLContext(sc)
 
     test_df = spark.read \
-    .jdbc("jdbc:postgresql:XX:5432", "public.demo",
-          properties={"user": "XX", "password": "XX"})
+        .jdbc("jdbc:postgresql://ec2-18-209-241-29.compute-1.amazonaws.com:5432/postgres", "demo",
+              properties={"user": "postgres", "password": "postgres"})
 
     # print schema
     test_df.printSchema()
