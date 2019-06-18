@@ -221,7 +221,8 @@
             "reqSigs": 1,
             "type": "pubkeyhash",
             "addresses": [
-              "18urAn8fDBWkZNNAybv3vQaMACZxgM2mJg"
+              "18urAn8fDBWkZNNAybv3vQaMACZxgM2mJg",
+              "TESTERJAMESkZNNAybv3vQaMACZxgM2mJg"
             ]
           }
         },

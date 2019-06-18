@@ -1,88 +1,114 @@
-# copy file using scp -i ~/.ssh/mycelias-IAM-keypair.pem address-cluster1.py XX.compute-1.amazonaws.com:/home/ec2-user/spark-scripts
-# run using $SPARK_HOME/bin/spark-submit address-cluster1.py
-
-#***OPTION #2: EXPLODE METHOD***
-
 from __future__ import print_function
 import sys
-from pyspark import SparkContext
+import os
+from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
-from pyspark.sql import SQLContext
-
 from pyspark.sql.functions import explode, concat_ws, udf
-from pyspark.sql.types import StringType
+from pyspark.sql.types import *
+
+
+# main parsing function
+def main(sc):
+    """
+    Main parsing function
+    Grabs blockchain JSON files from AWS S3 bucket
+    Then parses out and writes into queryable format in PostgreSQL
+    """
+    # pass in AWS keys
+    # sc._jsc.hadoopConfiguration().set("fs.s3a.access.key", os.environ["AWS_ACCESS_KEY_ID"])
+    # sc._jsc.hadoopConfiguration().set("fs.s3a.secret.key", os.environ["AWS_SECRET_ACCESS_KEY"])
+
+    # define S3 bucket location
+    # path = "s3a://bitcoin-test-mycelias/*.json"
+    path = "block150000_test.json"
+
+    # read in JSON files into DataFrame
+    json_df = spark.read.json(path, multiLine=True) \
+        .withColumn("tx", explode("tx"))
+
+    # prepare UDF function for processing
+    convert_udf = udf(lambda x: array_of_arrays_to_string(x), StringType())
+
+    # process DataFrame to return specific columns
+    tx_df = json_df.withColumn("txid", json_df.tx.txid)\
+        .withColumn("vin_coinbase", concat_ws(",", json_df.tx.vin.coinbase))\
+        .withColumn("vin_txid", concat_ws(",", json_df.tx.vin.txid))\
+        .withColumn("vin_vout", concat_ws(",", json_df.tx.vin.vout))\
+        .withColumn("vout_value", concat_ws(",", json_df.tx.vout.value))\
+        .withColumn("vout_n", concat_ws(",", json_df.tx.vout.n))\
+        .withColumn("vout_addresses_pre", json_df.tx.vout.scriptPubKey.addresses)\
+        .withColumn("vout_addresses", convert_udf("vout_addresses_pre"))\
+        .drop("tx")\
+        .drop("vout_addresses_pre")\
+        .drop("nonce")
+
+    display_df(tx_df)
+    display_col(tx_df, "vout_addresses")
+
+    # write out to PostgreSQL
+    write_to_postgres(tx_df)
+
+
+def array_of_arrays_to_string(x):
+    """
+    UDF function
+    Parses single and multisig addresses
+    """
+    result = []
+    for val in x:
+        if len(val) == 1:
+            result.append(str(val[0]))
+        else:
+            multisig = " | ".join([str(x) for x in val])
+            result.append(multisig)
+    return result
+
+
+def display_df(df):
+    """
+    Quality of life function
+    Prints schema and tabular view for a DataFrame
+    """
+    df.printSchema()
+    df.show()
+
+
+def display_col(df, col):
+    """
+    Quality of life function
+    Prints tabular view of a single column for a DataFrame
+    """
+    df.select(col).show(truncate=False)
+
+
+def write_to_postgres(df):
+    """
+    Write out to PostgreSQL
+    Based on EC2 Public DNS, database, and table name
+    """
+    df.write.mode("append")\
+        .jdbc("jdbc:postgresql://ec2-18-209-241-29.compute-1.amazonaws.com:5432/mycelias", "transactions",
+              properties={"user": "postgres", "password": "postgres"})
+
 
 if __name__ == "__main__":
     """
-        XX
+    Setup Spark session and AWS, postgres access keys
     """
+    spark_context = SparkContext(conf=SparkConf().setAppName("Transaction-JSON-Parser"))
+    # os.environ["AWS_ACCESS_KEY_ID"] = sys.argv[1]
+    # os.environ["AWS_SECRET_ACCESS_KEY"] = sys.argv[2]
+    # os.environ["AWS_DEFAULT_REGION"] = sys.argv[3]
+    # os.environ["POSTGRES_URL"] = sys.argv[4]
+    # os.environ["POSTGRES_USER"] = sys.argv[5]
+    # os.environ["POSTGRES_PASSWORD"] = sys.argv[6]
 
-    # function for converting addresses in vout to array of strings (delimited by pipe character for multisig)
-    def array_of_arrays_to_string(x):
-        result = []
-        for val in x:
-            if len(val) == 1:
-                result.append(str(val[0]))
-            else:
-                multisig = "|".join([str(x) for x in val])
-                result.append(multisig)
+    # create spark session
+    spark = SparkSession.builder.appName("Transaction-JSON-Parser").getOrCreate()
+    spark_context = spark.sparkContext
 
-        return result
+    # run the main insertion function
+    main(spark_context)
 
-    # TEST CONVERTER UDF
-    convert_udf = udf(lambda x: array_of_arrays_to_string(x), StringType())
-
-    # create Spark session
-    spark = SparkSession.builder.appName("SparkJsonParse").getOrCreate()
-
-    # create Spark context
-    sc = spark.sparkContext
-
-    # set file path ***EVENTUALLY WRITE LOOP OVER LARGE NUMBER OF BLOCKS***
-    path = "block150000.json"
-
-    # create DataFrame
-    df = spark.read.json(path, multiLine=True)
-    df.show()
-
-    # print schema
-    df.printSchema()
-
-    # test explode function at tx level
-    df_test1 = df.withColumn("tx", explode(df.tx))
-    df_test1.show()
-
-    # print schema
-    df_test1.printSchema()
-
-    # test adding new column at the tx level
-    df_test2 = df_test1.withColumn("txid", df_test1.tx.txid)\
-        .withColumn("vin_coinbase", concat_ws(",", df_test1.tx.vin.coinbase))\
-        .withColumn("vin_txid", concat_ws(",", df_test1.tx.vin.txid))\
-        .withColumn("vin_vout", concat_ws(",", df_test1.tx.vin.vout))\
-        .withColumn("vout_value", concat_ws(",", df_test1.tx.vout.value))\
-        .withColumn("vout_n", concat_ws(",", df_test1.tx.vout.n))\
-        .withColumn("vout_addresses_pre", df_test1.tx.vout.scriptPubKey.addresses)\
-        .withColumn("vout_addresses", convert_udf("vout_addresses_pre"))\
-        .drop("tx")\
-        .drop("vout_addresses_pre")
-
-    # show DataFrame
-    df_test2.show()
-
-    # print schema
-    df_test2.printSchema()
-
-    # drop unnecessary columns
-    ###drop_cols = ["", "", "", "", ""]
-    ###df_test2 = df_test2.drop()
-
-    # show specific column (TESTING PURPOSES ONLY)
-    df_test2.select("vout_addresses").show(truncate=False)
-
-    df_test2.write \
-        .mode("append")\
-        .jdbc("jdbc:postgresql://ec2-18-209-241-29.compute-1.amazonaws.com:5432/mycelias", "transactions4",
-              properties={"user": "postgres", "password": "postgres"})
-
+    # stop spark session
     spark.stop()
