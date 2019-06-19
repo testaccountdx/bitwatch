@@ -20,10 +20,75 @@ def main(sc):
 
     # define S3 bucket location
     # path = "s3a://bitcoin-test-mycelias/*.json"
-    path = "block150000_test.json"
+    path = "s3a://bitcoin-json-mvp-mycelias/*.json"
+
+    #test_path = "block150000_test.json"
+    #test_df = spark.read.json(test_path, multiLine=True)
+    #display_df(test_df)
+
+    # get blockchain schema
+    schema = StructType([
+        StructField('bits', StringType(), True),
+        StructField('chainwork', StringType(), True),
+        StructField('confirmations', LongType(), True),
+        StructField('difficulty', DoubleType(), True),
+        StructField('hash', StringType(), True),
+        StructField('height', LongType(), True),
+        StructField('mediantime', LongType(), True),
+        StructField('merkleroot', StringType(), True),
+        StructField('nTx', LongType(), True),
+        StructField('nextblockhash', StringType(), True),
+        StructField('nonce', LongType(), True),
+        StructField('previousblockhash', StringType(), True),
+        StructField('size', LongType(), True),
+        StructField('strippedsize', LongType(), True),
+        StructField('time', LongType(), True),
+        StructField('tx', ArrayType(
+            StructType([
+                StructField('hash', StringType(), True),
+                StructField('hex', StringType(), True),
+                StructField('locktime', LongType(), True),
+                StructField('size', LongType(), True),
+                StructField('txid', StringType(), True),
+                StructField('version', LongType(), True),
+                StructField('vin', ArrayType(
+                    StructType([
+                        StructField('coinbase', StringType(), True),
+                        StructField('scriptSig', StructType([
+                            StructField('asm', StringType(), True),
+                            StructField('hex', StringType(), True),
+                        ]), True),
+                        StructField('sequence', LongType(), True),
+                        StructField('txid', StringType(), True),
+                        StructField('vout', LongType(), True),
+                    ])
+                ), True),
+                StructField('vout', ArrayType(
+                    StructType([
+                        StructField('n', LongType(), True),
+                        StructField('scriptPubKey', StructType([
+                            StructField('addresses', ArrayType(
+                                StringType()
+                            ), True),
+                            StructField('asm', StringType(), True),
+                            StructField('hex', StringType(), True),
+                            StructField('reqSigs', LongType(), True),
+                            StructField('type', StringType(), True)
+                        ]), True),
+                        StructField('value', DoubleType(), True)
+                    ])
+                ), True),
+                StructField('vsize', LongType(), True),
+                StructField('weight', LongType(), True)
+            ])
+        ), True),
+        StructField('version', LongType(), True),
+        StructField('versionHex', StringType(), True),
+        StructField('weight', LongType(), True)
+    ])
 
     # read in JSON files into DataFrame
-    json_df = spark.read.json(path, multiLine=True) \
+    json_df = spark.read.json(path, multiLine=True, schema=schema) \
         .withColumn("tx", explode("tx"))
 
     # prepare UDF function for processing
@@ -42,6 +107,7 @@ def main(sc):
         .drop("vout_addresses_pre")\
         .drop("nonce")
 
+    # show schema, DataFrame and address column
     display_df(tx_df)
     display_col(tx_df, "vout_addresses")
 
@@ -112,3 +178,4 @@ if __name__ == "__main__":
 
     # stop spark session
     spark.stop()
+
