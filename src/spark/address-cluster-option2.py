@@ -20,7 +20,7 @@ def main(sc):
 
     # define S3 bucket location
     # path = "s3a://bitcoin-test-mycelias/*.json"
-    path = "s3a://bitcoin-json-mvp-mycelias/*.json"
+    path = "s3a://bitcoin-json-mycelias/*.json"
 
     #test_path = "block150000_test.json"
     #test_df = spark.read.json(test_path, multiLine=True)
@@ -61,6 +61,9 @@ def main(sc):
                         StructField('sequence', LongType(), True),
                         StructField('txid', StringType(), True),
                         StructField('vout', LongType(), True),
+                        StructField('txinwitness', ArrayType(
+                            StringType()
+                        ), True)
                     ])
                 ), True),
                 StructField('vout', ArrayType(
@@ -122,11 +125,12 @@ def array_of_arrays_to_string(x):
     """
     result = []
     for val in x:
-        if len(val) == 1:
-            result.append(str(val[0]))
-        else:
-            multisig = " | ".join([str(x) for x in val])
-            result.append(multisig)
+        if val is not None:
+            if len(val) == 1:
+                result.append(str(val[0]))
+            else:
+                multisig = " | ".join([str(x) for x in val])
+                result.append(multisig)
     return result
 
 
