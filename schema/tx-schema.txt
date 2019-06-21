@@ -1,3 +1,5 @@
+Inferred schema for raw blockchain JSON file
+
 root
  |-- bits: string (nullable = true)
  |-- chainwork: string (nullable = true)
