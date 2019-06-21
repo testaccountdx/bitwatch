@@ -3,7 +3,7 @@ import sys
 import os
 from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import explode, concat_ws, udf
+from pyspark.sql.functions import explode, concat_ws, udf, concat, col, lit, when
 from pyspark.sql.types import *
 
 
@@ -19,12 +19,13 @@ def main(sc):
     # sc._jsc.hadoopConfiguration().set("fs.s3a.secret.key", os.environ["AWS_SECRET_ACCESS_KEY"])
 
     # define S3 bucket location
-    # path = "s3a://bitcoin-test-mycelias/*.json"
-    path = "s3a://bitcoin-json-mycelias/*.json"
+    path = "s3a://bitcoin-json-mycelias/*"
 
     #test_path = "block150000_test.json"
     #test_df = spark.read.json(test_path, multiLine=True)
     #display_df(test_df)
+
+    print("---STARTING SPARK JOB---")
 
     # get blockchain schema
     schema = StructType([
@@ -94,11 +95,14 @@ def main(sc):
     json_df = spark.read.json(path, multiLine=True, schema=schema) \
         .withColumn("tx", explode("tx"))
 
+    print("---JSON DATA SUCCESSFULLY READ IN---")
+
     # prepare UDF function for processing
     convert_udf = udf(lambda x: array_of_arrays_to_string(x), StringType())
 
     # process DataFrame to return specific columns
-    tx_df = json_df.withColumn("txid", json_df.tx.txid)\
+    tx_df = json_df.withColumn("txid_pre", json_df.tx.txid)\
+        .withColumn("txid", when((json_df.tx.txid == 'e3bf3d07d4b0375638d5f1db5255fe07ba2c4cb067cd81b84ee974b6585fb468') | (json_df.tx.txid == 'd5d27987d2a3dfc724e359870c6644b40e497bdc0589a033220fe15429d88599'), concat(col("txid_pre"), lit("-"), col("height"))).otherwise(json_df.tx.txid))\
         .withColumn("vin_coinbase", concat_ws(",", json_df.tx.vin.coinbase))\
         .withColumn("vin_txid", concat_ws(",", json_df.tx.vin.txid))\
         .withColumn("vin_vout", concat_ws(",", json_df.tx.vin.vout))\
@@ -108,14 +112,19 @@ def main(sc):
         .withColumn("vout_addresses", convert_udf("vout_addresses_pre"))\
         .drop("tx")\
         .drop("vout_addresses_pre")\
-        .drop("nonce")
+        .drop("nonce")\
+        .drop("txid_pre")
+
+    print("---JSON DATA SUCCESSFULLY PROCESSED INTO DATAFRAME---")
 
     # show schema, DataFrame and address column
-    display_df(tx_df)
-    display_col(tx_df, "vout_addresses")
+    # display_df(tx_df)
+    # display_col(tx_df, "vout_addresses")
 
     # write out to PostgreSQL
     write_to_postgres(tx_df)
+
+    print("---JSON DATA SUCCESSFULLY WRITTEN TO POSTGRESQL---")
 
 
 def array_of_arrays_to_string(x):
@@ -157,7 +166,7 @@ def write_to_postgres(df):
     Based on EC2 Public DNS, database, and table name
     """
     df.write.mode("append")\
-        .jdbc("jdbc:postgresql://ec2-18-209-241-29.compute-1.amazonaws.com:5432/mycelias", "transactions",
+        .jdbc("jdbc:postgresql://ec2-34-204-179-83.compute-1.amazonaws.com:5432/mycelias", "transactions",
               properties={"user": "postgres", "password": "postgres"})
 
 
