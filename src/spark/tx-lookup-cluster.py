@@ -1,10 +1,8 @@
 from __future__ import print_function
-import sys
-import os
 import config
-from pyspark import SparkContext, SparkConf, sql
+from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession, SQLContext
-from pyspark.sql.functions import explode, concat_ws, concat, col, lit, split, translate, row_number, arrays_zip
+from pyspark.sql.functions import explode, concat, col, lit, split, translate, row_number, arrays_zip
 from pyspark.sql.types import *
 from pyspark.sql.window import Window
 from graphframes import *
@@ -23,8 +21,9 @@ def main(sc):
     # ---READ IN TRANSACTION DATA AND PERFORM REVERSE TX LOOKUP USING JOINS---
 
     # create initial SQL query
-    tx_query = "SELECT txid, height, time, ntx, vin_coinbase, vin_txid, vin_vout, vout_value, vout_n, vout_addresses FROM {} WHERE height <= 400000 LIMIT 5000000"\
-        .format(config.SPARK_CONFIG['PG_TABLE'])
+    # tx_query = "SELECT txid, height, time, ntx, vin_coinbase, vin_txid, vin_vout, vout_value, vout_n, vout_addresses FROM {} WHERE height <= 400000 LIMIT 5000000"\
+    tx_query = "SELECT txid, height, time, ntx, vin_coinbase, vin_txid, vin_vout, vout_value, vout_n, vout_addresses FROM {}"\
+        .format(config.SPARK_CONFIG['PG_TX_TABLE'])
 
     # read in data from PostgreSQL
     tx_df = spark.read \
@@ -36,7 +35,6 @@ def main(sc):
         .option("numPartitions", '10000') \
         .load()
     # display_df(tx_df)
-    # .option("numPartitions", '10000')\
 
     # select priority columns, convert array columns, and zip vin and vout fields
     clean_df = tx_df.withColumn("vin_txid_arr", split(col("vin_txid"), ",\s*")) \
@@ -81,14 +79,8 @@ def main(sc):
         .drop("right_key")
     # display_df(join_df)
 
-    # write join DataFrame to PostgreSQL
-    # write_to_postgres(join_df)
-
+    # create temporary table for GraphFrames
     join_df.registerTempTable("join_result")
-
-    # ---FOR TESTING ONLY--- show join_result DataFrame for a specific block to verify correct results
-    # result_df = spark.sql("SELECT * FROM join_result WHERE join_result.height = 68780 ORDER BY join_result.txid")
-    # result_df.show(200)
 
     # ---CREATING GRAPHFRAME FOR CONNECTED COMPONENTS ALGORITHM---
 
@@ -105,27 +97,23 @@ def main(sc):
     # first_by_txid_df.show(100)
 
     # join DataFrames
-    interim = join_df.join(first_by_txid_df, join_df.txid == first_by_txid_df.txid2, 'left')
-
-    # write to PostgreSQL
-    ### write_to_postgres(interim)
+    interim_df = join_df.join(first_by_txid_df, join_df.txid == first_by_txid_df.txid2, 'left')
 
     # create edges DataFrame
-    edges = interim.select("vout_addr", "vout_addr_first") \
+    edges = interim_df.select("vout_addr", "vout_addr_first") \
         .withColumnRenamed("vout_addr", "src") \
         .withColumnRenamed("vout_addr_first", "dst") \
         .na.drop()
-
-    # edges.show(200)
 
     # create GraphFrame
     g = GraphFrame(vertices, edges)
 
     # set checkpoint directory in S3
-    sc.setCheckpointDir(config.SPARK_CONFIG['CHECKPOINT'])
+    sc.setCheckpointDir(config.SPARK_CONFIG['S3_CHECKPOINT'])
 
     # run connected components
     clst_result = g.connectedComponents()
+    clst_result.show(100, truncate=False)
 
     # # ---FOR TESTING ONLY--- show result DataFrame for a specific block to verify correct results
     # clst_result.registerTempTable("clst_table")
@@ -133,7 +121,7 @@ def main(sc):
     # view_df.show(1000, truncate=False)
 
     # write out to PostgreSQL
-    write_to_postgres(clst_result)
+    write_clst_to_pg(clst_result)
 
 
 def display_df(df):
@@ -153,19 +141,19 @@ def display_col(df, col):
     df.select(col).show(truncate=False)
 
 
-def write_to_postgres(df):
+def write_clst_to_pg(df):
     """
     Write out to PostgreSQL
     Based on EC2 Public DNS, database, and table name
     """
     df.write.mode("append")\
-        .jdbc("jdbc:postgresql://ec2-34-204-179-83.compute-1.amazonaws.com:5432/mycelias", "interim",
-              properties={"user": "postgres", "password": "postgres"})
+        .jdbc(config.SPARK_CONFIG['PG_URL'] + config.SPARK_CONFIG['PG_PORT'] + "/" + config.SPARK_CONFIG['PG_DB'], config.SPARK_CONFIG['PG_CLST_TABLE'],
+              properties={"user": config.SPARK_CONFIG['PG_USER'], "password": config.SPARK_CONFIG['PG_PASSWORD']})
 
 
 if __name__ == "__main__":
     """
-    Setup Spark session and AWS, postgres access keys
+    Setup Spark session
     """
     # set up spark context and session
     spark_context = SparkContext(conf=SparkConf().setAppName("Tx-Reverse-Lookup"))

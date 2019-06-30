@@ -1,6 +1,5 @@
 from __future__ import print_function
-import sys
-import os
+import config
 from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import explode, concat_ws, udf, concat, col, lit, when
@@ -14,20 +13,10 @@ def main(sc):
     Grabs blockchain JSON files from AWS S3 bucket
     Then parses out and writes into queryable format in PostgreSQL
     """
-    # pass in AWS keys
-    # sc._jsc.hadoopConfiguration().set("fs.s3a.access.key", os.environ["AWS_ACCESS_KEY_ID"])
-    # sc._jsc.hadoopConfiguration().set("fs.s3a.secret.key", os.environ["AWS_SECRET_ACCESS_KEY"])
 
-    # define S3 bucket location
-    path = "s3a://bitcoin-json-mycelias/*"
+    # ---WRITE CUSTOM SCHEMA TO OVERRIDE SCHEMA INFERENCE---
 
-    #test_path = "block150000_test.json"
-    #test_df = spark.read.json(test_path, multiLine=True)
-    #display_df(test_df)
-
-    print("---STARTING SPARK JOB---")
-
-    # get blockchain schema
+    # create custom schema for blockchain data
     schema = StructType([
         StructField('bits', StringType(), True),
         StructField('chainwork', StringType(), True),
@@ -91,11 +80,11 @@ def main(sc):
         StructField('weight', LongType(), True)
     ])
 
-    # read in JSON files into DataFrame
-    json_df = spark.read.json(path, multiLine=True, schema=schema) \
-        .withColumn("tx", explode("tx"))
+    # ---READ IN JSON DATA FROM S3 AND PROCESS---
 
-    print("---JSON DATA SUCCESSFULLY READ IN---")
+    # read in JSON files from S3 into DataFrame
+    json_df = spark.read.json(config.SPARK_CONFIG['S3_JSON'], multiLine=True, schema=schema) \
+        .withColumn("tx", explode("tx"))
 
     # prepare UDF function for processing
     convert_udf = udf(lambda x: array_of_arrays_to_string(x), StringType())
@@ -113,18 +102,10 @@ def main(sc):
         .drop("tx")\
         .drop("vout_addresses_pre")\
         .drop("nonce")\
-        .drop("txid_pre")\
-
-    print("---JSON DATA SUCCESSFULLY PROCESSED INTO DATAFRAME---")
-
-    # show schema, DataFrame and address column
-    # display_df(tx_df)
-    # display_col(tx_df, "vout_addresses")
+        .drop("txid_pre")
 
     # write out to PostgreSQL
-    write_to_postgres(tx_df)
-
-    print("---JSON DATA SUCCESSFULLY WRITTEN TO POSTGRESQL---")
+    write_tx_to_pg(tx_df)
 
 
 def array_of_arrays_to_string(x):
@@ -160,29 +141,22 @@ def display_col(df, col):
     df.select(col).show(truncate=False)
 
 
-def write_to_postgres(df):
+def write_tx_to_pg(df):
     """
     Write out to PostgreSQL
     Based on EC2 Public DNS, database, and table name
     """
     df.write.mode("append")\
-        .jdbc("jdbc:postgresql://ec2-34-204-179-83.compute-1.amazonaws.com:5432/mycelias", "transactions",
-              properties={"user": "postgres", "password": "postgres"})
+        .jdbc(config.SPARK_CONFIG['PG_URL'] + config.SPARK_CONFIG['PG_PORT'] + "/" + config.SPARK_CONFIG['PG_DB'], config.SPARK_CONFIG['PG_TX_TABLE'],
+              properties={"user": config.SPARK_CONFIG['PG_USER'], "password": config.SPARK_CONFIG['PG_PASSWORD']})
 
 
 if __name__ == "__main__":
     """
-    Setup Spark session and AWS, postgres access keys
+    Setup Spark session
     """
+    # set up spark context and session
     spark_context = SparkContext(conf=SparkConf().setAppName("Transaction-JSON-Parser"))
-    # os.environ["AWS_ACCESS_KEY_ID"] = sys.argv[1]
-    # os.environ["AWS_SECRET_ACCESS_KEY"] = sys.argv[2]
-    # os.environ["AWS_DEFAULT_REGION"] = sys.argv[3]
-    # os.environ["POSTGRES_URL"] = sys.argv[4]
-    # os.environ["POSTGRES_USER"] = sys.argv[5]
-    # os.environ["POSTGRES_PASSWORD"] = sys.argv[6]
-
-    # create spark session
     spark = SparkSession.builder.appName("Transaction-JSON-Parser").getOrCreate()
     spark_context = spark.sparkContext
 

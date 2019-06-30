@@ -1,5 +1,6 @@
 from flask import render_template
 from app import app
+import config
 from sqlalchemy import create_engine
 from sqlalchemy_utils import database_exists, create_database
 import pandas as pd
@@ -7,11 +8,11 @@ import psycopg2
 from flask import request
 
 # PostgreSQL configuration details
-user = 'postgres'
-host = 'ec2-34-204-179-83.compute-1.amazonaws.com'
-port = '5432'
-dbname = 'mycelias'
-password = 'postgres'
+user = config.FLASK_CONFIG['PG_USER']
+host = config.FLASK_CONFIG['PG_HOST']
+port = config.FLASK_CONFIG['PG_PORT']
+dbname = config.FLASK_CONFIG['PG_DB']
+password = config.FLASK_CONFIG['PG_PASSWORD']
 
 con = None
 con = psycopg2.connect(host=host, port=port, database=dbname, user=user, password=password)
@@ -26,7 +27,6 @@ def index():
 @app.route('/explorer')
 def explorer():
     # pull input_addr from input fields
-    ###input_addr = request.args.get('input_addr')
     input_addr = request.args.get('input_addr')
 
     # run query
