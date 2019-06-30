@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block header %}
+
+<script src="static/js/explore.js"></script>
+
+{% endblock %}
+
+
+
+{% block content %}
+
+<br><br>
+
+    <div class="text-center">
+        <img src="/static/img/logo-gradient-crop.png" class="img-fluid" width="200" height="200" alt="">
+    </div>
+
+<br><br>
+
+    <form action="/explorer" method="GET">
+        <div class="text-center active-cyan-3 active-cyan-4 mb-4">
+            <input class="form-control" type="text" id="input_addr" name="input_addr" placeholder="Search for Address" aria-label="Search">
+            <button type="submit" class="btn purple-gradient">Find Associated Addresses</button>
+        </div>
+    </form>
+
+<br><br>
+
+    <div class="container">
+        <div class="starter-template">
+            <h3>Summary Statistics</h3>
+            <p class="lead">Statistics associated with address cluster</p>
+        </div>
+
+        <table class="table table-hover">
+            <tr>
+                <th>Statistic</th>
+                <th>Value</th>
+            </tr>
+            {% for statistic in statistics %}
+                <tr>
+                    <td>{{ statistic['label'] }}</td>
+                    <td>{{ statistic['value']}}</td>
+                </tr>
+            {% endfor %}
+        </table>
+
+        <div class="starter-template">
+            <h3>Associated Addresses</h3>
+            <p class="lead">List of addresses associated with the input address</p>
+        </div>
+
+        <table class="table table-hover">
+            <tr>
+                <th>#</th>
+                <th>Address</th>
+            </tr>
+            {% for address in addresses %}
+                <tr>
+                    <td>{{ address['number'] }}</td>
+                    <td>{{ address['address'] }}</td>
+                </tr>
+            {% endfor %}
+        </table>
+
+    </div>
+
+{% endblock %}

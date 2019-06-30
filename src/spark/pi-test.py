@@ -1,5 +1,3 @@
-# copy file using scp -i ~/.ssh/mycelias-IAM-keypair.pem pi-test.py ec2-user@ec2-3-84-139-73.compute-1.amazonaws.com:/home/ec2-user/spark-scripts
-# run using $SPARK_HOME/bin/spark-submit pi-test.py
 from __future__ import print_function
 
 import sys

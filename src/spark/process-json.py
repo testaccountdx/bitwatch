@@ -113,7 +113,7 @@ def main(sc):
         .drop("tx")\
         .drop("vout_addresses_pre")\
         .drop("nonce")\
-        .drop("txid_pre")
+        .drop("txid_pre")\
 
     print("---JSON DATA SUCCESSFULLY PROCESSED INTO DATAFRAME---")
 
