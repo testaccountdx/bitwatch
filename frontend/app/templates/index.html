@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+    <!-- Jumbotron -->
+    <div class="card card-image" style="background-image: url(https://cdn-images-1.medium.com/max/1600/1*7wsbmtHKY80X6BrFSYDpwg.jpeg);">
+        <div class="text-white text-center rgba-stylish-strong py-5 px-4">
+            <div class="py-5">
+                <!-- Content -->
+                <h5 class="h5 orange-text"><i class="fab fa-bitcoin"></i> Bitcoin</h5>
+                <h2 class="card-title h2 my-4 py-2">Welcome to BitWatch</h2>
+                <p class="mb-4 pb-2 px-md-5 mx-md-5">Enabling cyber forensics on the Bitcoin blockchain,<br>the largest public transaction ledger in the world.</p>
+                <a class="btn peach-gradient" href={{ url_for('explorer') }}><i class="fas fa-clone left"></i> View project</a>
+            </div>
+        </div>
+    </div>
+    <!-- Jumbotron -->
+
+    <br><br><br>
+
+    <main role="main">
+        <!-- /container -->
+        <div class="container">
+            <!-- Example row of columns -->
+            <div class="row">
+                <div class="col-md-4">
+                    <h2>Heading</h2>
+                    <p>Donec id elit non mi porta gravida at eget metus. Fusce dapibus, tellus ac cursus commodo, tortor mauris condimentum nibh, ut fermentum massa justo sit amet risus. Etiam porta sem malesuada magna mollis euismod. Donec sed odio dui. </p>
+                    <p><a class="btn winter-neva-gradient" href="#" role="button">View details &raquo;</a></p>
+                </div>
+                <div class="col-md-4">
+                    <h2>Heading</h2>
+                    <p>Donec id elit non mi porta gravida at eget metus. Fusce dapibus, tellus ac cursus commodo, tortor mauris condimentum nibh, ut fermentum massa justo sit amet risus. Etiam porta sem malesuada magna mollis euismod. Donec sed odio dui. </p>
+                    <p><a class="btn winter-neva-gradient" href="#" role="button">View details &raquo;</a></p>
+                </div>
+                <div class="col-md-4">
+                    <h2>Heading</h2>
+                    <p>Donec sed odio dui. Cras justo odio, dapibus ac facilisis in, egestas eget quam. Vestibulum id ligula porta felis euismod semper. Fusce dapibus, tellus ac cursus commodo, tortor mauris condimentum nibh, ut fermentum massa.</p>
+                    <p><a class="btn winter-neva-gradient" href="#" role="button">View details &raquo;</a></p>
+                </div>
+            </div>
+            <hr>
+        </div>
+        <!-- /container -->
+    </main>
+
+{% endblock %}

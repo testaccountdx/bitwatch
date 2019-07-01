@@ -1,5 +1,0 @@
-This is a test file for the initial git commit
-
-Development branch will be created shortly
-
-General skeleton structure for directory will be created shortly
