@@ -80,4 +80,4 @@ We leverage the [connectedComponents()](https://docs.databricks.com/spark/latest
 
 BitWatch has a simple web interface for address cluster lookup based on a single input address.
 
-[BitWatch](https://www.mycelias.com)
+Website: [BitWatch](https://www.mycelias.com)
