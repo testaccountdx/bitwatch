@@ -72,7 +72,7 @@ We leverage the [connectedComponents()](https://docs.databricks.com/spark/latest
 
 ## Architecture
 
-![Image of Pipeline](images/pipeline.png)
+![Image of Pipeline](images/pipelinefinal.png)
 
 
 
