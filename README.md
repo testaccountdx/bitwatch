@@ -1,5 +1,7 @@
 # BitWatch
 
+![Image of Cover](images/cover.png)
+
 Enabling cyber forensics on the Bitcoin blockchain by linking addresses used by the same individual and/or entity.
 
 Results can inform criminal investigations into money flows for dark webs (i.e., Silk Road) and fraud detection by tracing network transaction patterns.
