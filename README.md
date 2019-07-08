@@ -74,6 +74,33 @@ We leverage the [connectedComponents()](https://docs.databricks.com/spark/latest
 
 ![Image of Pipeline](images/pipelinefinal.png)
 
+###Data Acquisition
+
+Data is acquired by running JSON-RPC calls from a full Bitcoin Core node.
+
+Run `./json-rpc-pase-all-blocks.sh` in `/src/bash` directory to deserialize Bitcoin block data into JSON and write into dedicated AWS S3 bucket.
+This must be run from a full Bitcoin Core node with transaction indexing enabled (see [here](https://www.buildblockchain.tech/blog/btc-node-developers-guide) for setup instructions)
+
+###Ingestion
+
+BitWatch runs on top of a Spark cluster (one c5.large for master, three c5.2xlarge for workers) and a single PostgreSQL instance (one m4.large).
+
+Data is ingested with Spark from an S3 bucket that holds JSON files (one file for each blockchain block).
+
+Results are then written out to PostgreSQL in a tabular format in a `transactions` table (each row represents one transaction).
+
+Run `process-json.py` in `src/spark` directory using `spark-submit` command in PySpark to ingest JSON files from AWS S3 bucket.
+
+
+###Compute
+
+BitWatch uses Spark GraphFrames (built on top of a vertex DataFrame and edge DataFrame) to run `.connectedComponents()` method for generating address clusters.
+
+`.connectedComponents()` is an implementation of the Disjoint Set (a.k.a. Union Find) algorithm to cluster addresses across Bitcoin transactions.
+
+Using a graph model for processing transaction data is crucial as Disjoint Set on a relational model is much slower compared to a graph model.
+
+Run `tx-lookup-cluster.py` in `src/spark` directory using `spark-submit` command in PySpark to process `transactions` table in PostgreSQL and generate address clusters.
 
 
 ## Web App
