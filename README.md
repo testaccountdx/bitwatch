@@ -159,6 +159,8 @@ Bitcoin-CLI commands can now be used to interface with JSON-RPC and return data 
 We will now launch a bash script (`json-rpc-parse-all-blocks.sh` in the `src/bash` directory) that leverages JSON-RPC to write each block's transaction data in JSON format into a pre-specified AWS S3 bucket.
 See simple instructions for setting up an AWS S3 bucket [here](https://aws.amazon.com/s3/getting-started/).
 Deserializing block data (blk*.dat files) using JSON-RPC results in ~1.8 TB of JSON data stored in S3.
+Note this script must be copied into the Bitcoin Core EC2 instance and run within that instance.
+See instructions for secure copy (scp) [here](https://linuxize.com/post/how-to-use-scp-command-to-securely-transfer-files/).
 
     # launch bash script to write entire block history into S3 in JSON format (one file per Bitcoin block)
     chmod +x json-rpc-parse-all-blocks.sh
