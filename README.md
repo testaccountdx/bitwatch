@@ -302,7 +302,7 @@ Start Spark server (should see Spark ASCII art):
 Check everything is working by going to the master_public_ip:8080 (requires port 8080 open).
 If you see the SparkUI with your workers up, Spark setup is complete.
 
-Now we will install PySpark
+Install PySpark:
 
     # install pip3
     sudo apt install python3-pip -y
