@@ -13,7 +13,8 @@ Current implementation is for Bitcoin, but solution is highly transferable to ot
 2. [Dataset](README.md#Dataset)
 3. [Methodology](README.md#Methodology)
 4. [Architecture](README.md#Architecture)
-5. [Web App](README.md#Web-App)
+5. [Installation](README.md#Installation)
+6. [Web App](README.md#Web-App)
 
 ## Motivation
 
@@ -83,6 +84,7 @@ Data is acquired by running JSON-RPC calls from a full Bitcoin Core node.
 Run `./json-rpc-pase-all-blocks.sh` in `/src/bash` directory to deserialize Bitcoin block data into JSON and write into dedicated AWS S3 bucket.
 This must be run from a full Bitcoin Core node with transaction indexing enabled (see [here](https://www.buildblockchain.tech/blog/btc-node-developers-guide) for setup instructions)
 
+
 ### Ingestion
 
 BitWatch runs on top of a Spark cluster (one c5.large for master, three c5.2xlarge for workers) and a single PostgreSQL instance (one m4.large).
@@ -91,7 +93,7 @@ Data is ingested with Spark from an S3 bucket that holds JSON files (one file fo
 
 Results are then written out to PostgreSQL in a tabular format in a `transactions` table (each row represents one transaction).
 
-Run `process-json.py` in `src/spark` directory using `spark-submit` command in PySpark to ingest JSON files from AWS S3 bucket.
+(See Installation section below) Run `process-json.py` in `src/spark` directory using `spark-submit` command in PySpark to ingest JSON files from AWS S3 bucket.
 
 
 ### Compute
@@ -102,7 +104,214 @@ BitWatch uses Spark GraphFrames (built on top of a vertex DataFrame and edge Dat
 
 Using a graph model for processing transaction data is crucial as Disjoint Set on a relational model is much slower compared to a graph model.
 
-Run `tx-lookup-cluster.py` in `src/spark` directory using `spark-submit` command in PySpark to process `transactions` table in PostgreSQL and generate address clusters.
+(See Installation section below) run `tx-lookup-cluster.py` in `src/spark` directory using `spark-submit` command in PySpark to process `transactions` table in PostgreSQL and generate address clusters.
+
+
+## Installation
+
+Installation (i.e., Bitcoin Core, Spark, PostgreSQL) will occur on on AWS EC2 instances.
+
+Before going through the below instructions, please familiarize yourself with setting up security groups in AWS [here](https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html).
+
+
+### Bitcoin Core
+
+We must first set up a [Bitcoin Core](https://github.com/bitcoin/bitcoin) full node to synchronize block data with the main Bitcoin network.
+This will allow access to the full history of the Bitcoin blockchain and allow for local (i.e., trustless) validation of all transactions.
+Local validation is required to avoid tainted data (i.e., just downloading the entire blockchain from an online .zip file).
+Setting up a Bitcoin Core node is required in order to access block data via simple JSON-RPC calls.
+
+Most guides for setting up a full node are geared towards setup on local machines, but we will install Bitcoin Core on an AWS EC2 instance.
+Launch an EC2 instance using the **Ubuntu Server 18.04 LTS (HVM), SSD Volume Type** m4.large image type and set root volume storage to 500 GB.
+Then [SSH into the instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AccessingInstancesLinux.html) and run the following commands:
+
+    # run following comamnds to install Bitcoin Core using PPA
+	sudo apt-add-repository ppa:bitcoin/bitcoin
+    sudo apt-get update
+    sudo apt-get install bitcoind
+    
+    # run bitcoind -version to check bitcoin software version
+    bitcoind -version
+    
+You now have the latest Bitcoin Core software, but you are missing 10+ years of Bitcoin transaction history.
+Given this is a full node, it stores and validates the full history of the blockchain.
+The download process takes a long time and requires ~350 GB disk space (as of Jul-2019).
+An AWS EC2 instance should be able to download the full blockchain in ~1-2 days.
+	
+    # start downloading blockchain with transaction indexing turned on
+	bitcoind -daemon -txindex=1
+	
+	# check block download progress
+	cd ~/.bitcoin/d
+	ls
+	tail -f debug.log
+	
+When the node performs the initial sync, log files will fly by very quickly.
+Hit Ctrl + C to exit tailing the file and examine the messages.
+Bitcoin-CLI commands can now be used to interface with JSON-RPC and return data in JSON format:
+
+    # stop and restart Bitcoin Core
+    bitcoin-cli stop
+    bitcoind -daemon
+    
+    # view number of blocks in longest blockchain
+    bitcoin-cli getblock
+
+We will now launch a bash script (`json-rpc-parse-all-blocks.sh` in the `src/bash` directory) that leverages JSON-RPC to write each block's transaction data in JSON format into a pre-specified AWS S3 bucket.
+See simple instructions for setting up an AWS S3 bucket [here](https://aws.amazon.com/s3/getting-started/).
+Deserializing block data (blk*.dat files) using JSON-RPC results in ~1.8 TB of JSON data stored in S3.
+Note this script must be copied into the Bitcoin Core EC2 instance and run within that instance.
+
+See instructions for secure copy (scp) [here](https://linuxize.com/post/how-to-use-scp-command-to-securely-transfer-files/).
+
+    # launch bash script to write entire block history into S3 in JSON format (one file per Bitcoin block)
+    chmod +x json-rpc-parse-all-blocks.sh
+    ./json-rpc-parse-all-blocks.sh
+
+More comprehensive instructions for tinkering with Bitcoin Core and JSON-RPC can be found [here](https://www.buildblockchain.tech/blog/btc-node-developers-guide):
+
+
+### PostgreSQL
+
+We will use a dedicated PostgreSQL instance to store data processed in Spark (both ETL and Compute aspect of pipeline).
+
+We will launch an EC2 instance using the **Ubuntu Server 18.04 LTS (HVM), SSD Volume Type** m4.large image type and set root volume storage to 1 TB.
+Then [SSH into the instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AccessingInstancesLinux.html) and run the following commands:
+
+    # run update and install PostgreSQL
+	sudo apt update
+	sudo apt install postgresql postgresql-contrib
+	
+	# start PostgreSQL and check status
+	sudo systemctl start postgresql
+	sudo systemctl status postgresql
+	
+	# log in as default postgres user
+	sudo -u postgres -i
+	
+	# change default postgres user password
+	psql ALTER USER postgres PASSWORD 'myPassword';
+	
+All configuration files are stored here:
+
+    /etc/postgresql/10/main
+    
+The `postgresql.conf` and `pga_hba.conf` files are the most relevant for configuring a database.
+
+    #postgresql.conf
+    #listen_addresses = 'localhost' # what IP address(es) to listen on;
+                                    # comma-separated list of addresses;
+                                    # defaults to 'localhost'; 
+                                    # use '*' for all
+                                    # (change requires restart)
+    port = 5432                     # (change requires restart)
+    max_connections = 100           # (change requires restart)
+    ...
+
+Change `listen_addresses` to `*` instead of `localhost` and restart postgres service using `sudo systemctl restart postgresql`.
+
+The `pga_hba.conf` file controls which hosts are allows to connect.
+Add the following line under the IPv4 section in that file:
+
+    host    <database>      <user>       0.0.0.0/0        md5
+
+The PostgreSQL instance should now be setup and ready for remote connection.
+
+
+### Spark
+
+We will set up Spark on a cluster of EC2 instances to run the scripts for processing JSON data from the S3 bucket to PostgreSQL (`process-json.py`) and computing address clusters (`tx-lookup-cluster.py`).
+
+We will launch four EC2 instances, each using the **Ubuntu Server 18.04 LTS (HVM), SSD Volume Type** 1 x m5.large (master), 3x m5.2xlarge (workers) image type and set root volume storage to 200 GB.
+Then [SSH into the instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AccessingInstancesLinux.html) and run the following commands:
+
+    # run update and install java and scala
+	sudo apt update
+	sudo apt install openjdk-8-jre -y
+	sudo apt install scala -y
+	
+	# install sbt
+    echo "deb https://dl.bintray.com/sbt/debian /" | sudo tee -a /etc/apt/sources.list.d/sbt.list
+    sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 2EE0EA64E40A89B84B2DF73499E82A75642AC823
+    sudo apt-get update
+    sudo apt-get install sbt
+    
+    # install Spark 2.4.3
+    wget http://apache.mirrors.tds.net/spark/spark-2.4.3/spark-2.4.3-bin-hadoop2.7.tgz -P ~/Downloads
+    sudo tar zxvf ~/Downloads/spark-2.4.3-bin-hadoop2.7.tgz -C /usr/local
+    sudo mv /usr/local/spark-2.4.3-bin-hadoop2.7 /usr/local/spark
+    sudo chown -R ubuntu /usr/local/spark
+    
+    # edit ~/.profile
+    nano ~/.profile
+    
+    # add in following lines to ~/.profile
+    export SPARK_HOME=/usr/local/spark
+    export PATH=$PATH:$SPARK_HOME/bin
+    export PYSPARK_PYTHON=python3
+    
+    # update environment variables
+    source ~/.profile
+    
+    # configure Spark
+    cp /usr/local/spark/conf/spark-env.sh.template /usr/local/spark/conf/spark-env.sh
+    
+    # edit spark-env.sh
+    nano /usr/local/spark/conf/spark-env.sh
+    
+    # add in following lines to spark-env.sh
+    export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+    export SPARK_PUBLIC_DNS="<MASTER-public-dns>" (i.e., like ec2-x-xx-xxxx-xx.compute1.amazonaws.com)
+
+Go to master node and run:
+
+    touch $SPARK_HOME/conf/slaves
+    
+Add each worker to the file by opening $SPARK_HOME/conf/slaves and copying the public DNS (one per line):
+
+    nano $SPARK_HOME/conf/slaves
+    
+Connect master node to worker nodes (commands are only for master node):
+
+    sudo apt install openssh-server openssh-client
+    cd ~/.ssh
+    ssh-keygen -t rsa -P ""
+    
+    Generating public/private rsa key pair.
+    Enter file in which to save the key: id_rsa
+    Your identification has been saved in id_rsa.
+    Your public key has been saved in id_rsa.pub.
+    
+Manually copy id_rsa.pub key top worker nodes:
+
+    # on master:
+    cat ~/.ssh/id_rsa.pub
+    
+    # on slaves:
+    vi ~/.ssh/authorized_keys
+    # paste the key
+    
+    # test connection from master to workers
+    ssh ubuntu@ec2.x--x-x-x-x-x
+    
+Start Spark server (should see Spark ASCII art):
+
+    # start Spark server
+    sh /usr/local/spark/sbin/start-all.sh
+    
+Check everything is working by going to the master_public_ip:8080 (requires port 8080 open).
+If you see the SparkUI with your workers up, Spark setup is complete.
+
+Install PySpark:
+
+    # install pip3
+    sudo apt install python3-pip -y
+    
+    # install pyspark and findspark
+    pip3 install pyspark
+    pip3 install findspark --user
+    
+We should now be able to submit PySpark scripts (i.e., `process-json.py` and `tx-lookup-cluster.py`) files using `spark-submit` and run in Spark.
 
 
 ## Web App
