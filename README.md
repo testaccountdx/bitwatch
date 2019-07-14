@@ -160,6 +160,7 @@ We will now launch a bash script (`json-rpc-parse-all-blocks.sh` in the `src/bas
 See simple instructions for setting up an AWS S3 bucket [here](https://aws.amazon.com/s3/getting-started/).
 Deserializing block data (blk*.dat files) using JSON-RPC results in ~1.8 TB of JSON data stored in S3.
 Note this script must be copied into the Bitcoin Core EC2 instance and run within that instance.
+
 See instructions for secure copy (scp) [here](https://linuxize.com/post/how-to-use-scp-command-to-securely-transfer-files/).
 
     # launch bash script to write entire block history into S3 in JSON format (one file per Bitcoin block)
@@ -167,6 +168,53 @@ See instructions for secure copy (scp) [here](https://linuxize.com/post/how-to-u
     ./json-rpc-parse-all-blocks.sh
 
 More comprehensive instructions for tinkering with Bitcoin Core and JSON-RPC can be found [here](https://www.buildblockchain.tech/blog/btc-node-developers-guide):
+
+
+### PostgreSQL
+
+We will use a dedicated PostgreSQL instance to store data processed in Spark (both ETL and Compute aspect of pipeline).
+
+We will launch an EC2 instance using the **Ubuntu Server 18.04 LTS (HVM), SSD Volume Type** m4.large image type and set root volume storage to 1 TB.
+Then [SSH into the instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AccessingInstancesLinux.html) and run the following commands:
+
+    # run update and install PostgreSQL
+	sudo apt update
+	sudo apt install postgresql postgresql-contrib
+	
+	# start PostgreSQL and check status
+	sudo systemctl start postgresql
+	sudo systemctl status postgresql
+	
+	# log in as default postgres user
+	sudo -u postgres -i
+	
+	# change default postgres user password
+	psql ALTER USER postgres PASSWORD 'myPassword';
+	
+All configuration files are stored here:
+
+    /etc/postgresql/10/main
+    
+The `postgresql.conf` and `pga_hba.conf` files are the most relevant for configuring a database.
+
+    #postgresql.conf
+    #listen_addresses = 'localhost' # what IP address(es) to listen on;
+                                    # comma-separated list of addresses;
+                                    # defaults to 'localhost'; 
+                                    # use '*' for all
+                                    # (change requires restart)
+    port = 5432                     # (change requires restart)
+    max_connections = 100           # (change requires restart)
+    ...
+
+Change `listen_addresses` to `*` instead of `localhost` and restart postgres service using `sudo systemctl restart postgresql`.
+
+The `pga_hba.conf` file controls which hosts are allows to connect.
+Add the following line under the IPv4 section in that file:
+
+    host    <database>      <user>       0.0.0.0/0        md5
+
+The PostgreSQL instance should now be setup and ready for remote connection.
 
 
 ## Web App
