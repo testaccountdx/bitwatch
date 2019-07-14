@@ -13,7 +13,8 @@ Current implementation is for Bitcoin, but solution is highly transferable to ot
 2. [Dataset](README.md#Dataset)
 3. [Methodology](README.md#Methodology)
 4. [Architecture](README.md#Architecture)
-5. [Web App](README.md#Web-App)
+5. [Installation](README.md#Installation)
+6. [Web App](README.md#Web-App)
 
 ## Motivation
 
@@ -103,6 +104,67 @@ BitWatch uses Spark GraphFrames (built on top of a vertex DataFrame and edge Dat
 Using a graph model for processing transaction data is crucial as Disjoint Set on a relational model is much slower compared to a graph model.
 
 Run `tx-lookup-cluster.py` in `src/spark` directory using `spark-submit` command in PySpark to process `transactions` table in PostgreSQL and generate address clusters.
+
+
+## Installation
+
+Installation (i.e., Bitcoin Core, Spark, PostgreSQL) will occur on on AWS EC2 instances.
+
+Before going through the below instructions, please familiarize yourself with setting up security groups in AWS [here](https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html).
+
+
+### Bitcoin Core
+
+We must first set up a [Bitcoin Core](https://github.com/bitcoin/bitcoin) full node to synchronize block data with the main Bitcoin network.
+This will allow access to the full history of the Bitcoin blockchain and allow for local (i.e., trustless) validation of all transactions.
+Local validation is required to avoid tainted data (i.e., just downloading the entire blockchain from an online .zip file).
+Setting up a Bitcoin Core node is required in order to access block data via simple JSON-RPC calls.
+
+Most guides for setting up a full node are geared towards setup on local machines, but we will install Bitcoin Core on an AWS EC2 instance.
+Launch an EC2 instance using the **Ubuntu Server 18.04 LTS (HVM), SSD Volume Type** m4.large image type and set root volume storage to 500 GB.
+Then [SSH into the instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AccessingInstancesLinux.html) and run the following commands:
+
+    # run following comamnds to install Bitcoin Core using PPA
+	sudo apt-add-repository ppa:bitcoin/bitcoin
+    sudo apt-get update
+    sudo apt-get install bitcoind
+    
+    # run bitcoind -version to check bitcoin software version
+    bitcoind -version
+    
+You now have the latest Bitcoin Core software, but you are missing 10+ years of Bitcoin transaction history.
+Given this is a full node, it stores and validates the full history of the blockchain.
+The download process takes a long time and requires ~350 GB disk space (as of Jul-2019).
+An AWS EC2 instance should be able to download the full blockchain in ~1-2 days.
+	
+    # start downloading blockchain with transaction indexing turned on
+	bitcoind -daemon -txindex=1
+	
+	# check block download progress
+	cd ~/.bitcoin/d
+	ls
+	tail -f debug.log
+	
+When the node performs the initial sync, log files will fly by very quickly.
+Hit Ctrl + C to exit tailing the file and examine the messages.
+Bitcoin-CLI commands can now be used to interface with JSON-RPC and return data in JSON format:
+
+    # stop and restart Bitcoin Core
+    bitcoin-cli stop
+    bitcoind -daemon
+    
+    # view number of blocks in longest blockchain
+    bitcoin-cli getblock
+
+We will now launch a bash script (`json-rpc-parse-all-blocks.sh` in the `src/bash` directory) that leverages JSON-RPC to write each block's transaction data in JSON format into a pre-specified AWS S3 bucket.
+See simple instructions for setting up an AWS S3 bucket [here](https://aws.amazon.com/s3/getting-started/).
+Deserializing block data (blk*.dat files) using JSON-RPC results in ~1.8 TB of JSON data stored in S3.
+
+    # launch bash script to write entire block history into S3 in JSON format (one file per Bitcoin block)
+    chmod +x json-rpc-parse-all-blocks.sh
+    ./json-rpc-parse-all-blocks.sh
+
+More comprehensive instructions for tinkering with Bitcoin Core and JSON-RPC can be found [here](https://www.buildblockchain.tech/blog/btc-node-developers-guide):
 
 
 ## Web App
